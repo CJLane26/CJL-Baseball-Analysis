@@ -1,0 +1,94 @@
+---
+title: "2023 Phillies 10-Day wOBA for Git"
+author: "Cameron Lane"
+date: "2024-01-05"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load and Clean Phillies Batter data
+
+```{r, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+```
+### Load Batter Data
+Load batter data into a variable: data_read. data_read includes all hitting data in rolling 10-day windows from the start of the 2023 MLB Regular Season grouped by player. Data was contained locally in .csv file. Data was collected using Bill Petti's 'baseballr' package available on Github.
+```{r, echo = FALSE, include=FALSE}
+data_read <- read.csv("Phillies_wOBA10_All_Data.csv")
+```
+
+### Clean Batter Data
+Remove the bench and call-up players from the data. Another version of this code parses the data with a list of starting Phillies batters, but the exclusionary code is what this report is based on.
+
+```{r}
+data_read$Date <- as.Date(data_read$Date)
+
+players_to_remove <- c("Josh Harrison", "Darick Hall", "Dalton Guthrie", "Garrett Stubbs", "Drew Ellis", "Weston Wilson", "Cristian Pache", "Kody Clemens", "Jake Cave", "Johan Rojas", "Rodolfo Castro")
+
+exclusive_Phillies_wOBA_data_frame <- data_read[!(data_read$Name %in% players_to_remove), ]
+exclusive_Phillies_wOBA_data <- exclusive_Phillies_wOBA_data_frame %>% select(Name,PA,wOBA,Date)
+```
+
+# Analyze and Plot data
+
+
+### Calculate Trends and Correlation
+
+First, calculate the rolling 10-day average Team wOBA and the rolling average wOBA for every batter. Determine the correlation between each batter's performance and team average performance. Merge the data to create a final dataset for plotting.
+
+```{r, message=FALSE}
+average_wOBA_by_date <- exclusive_Phillies_wOBA_data %>%
+  group_by(Date) %>%
+  summarize(starters_wOBA = mean(wOBA,na.rm=TRUE))
+
+player_avg_trends <- exclusive_Phillies_wOBA_data %>%
+  group_by(Name,Date) %>%
+  summarize(avg_wOBA = mean(wOBA))
+
+correlation_data <- player_avg_trends %>%
+  inner_join(average_wOBA_by_date, by="Date") %>%
+  group_by(Name) %>%
+  summarize(correlation=cor(avg_wOBA, starters_wOBA))
+
+exclusive_Phillies_wOBA_data_with_Corr <- merge(exclusive_Phillies_wOBA_data, correlation_data, by="Name")
+```
+
+### Plot Data
+
+Each batter's rolling 10-day wOBA is plotted along with the team's average wOBA (gray) over the course of the season. The columns along the bottom of each chart represent their plate appearances (PA) over time. Fewer PAs result in less reliable wOBA results. The gray line in each batter's chart is the rolling Team average wOBA.
+
+```{r, echo=FALSE, include=FALSE}
+plot <- ggplot(exclusive_Phillies_wOBA_data_with_Corr, aes(x=Date,y=wOBA, color=Name))+
+  geom_bar(aes(y=PA/800), stat='identity',alpha=0.04, color = 'grey')+
+  geom_line(aes(group = Name))+
+  facet_wrap(~ Name)+
+  labs(title= "Rolling 10-day wOBA by Phillies Batter in 2023", x="Date",y="wOBA")+
+  theme_bw()+
+  scale_x_date(date_breaks ="30 days", date_labels = "%m-%d")+
+  theme( axis.text.x = element_text(size=7), panel.grid.major.y=element_line(size=0.3),panel.grid.minor.y=element_blank(), panel.grid.major.x = element_line(size=0.5), panel.grid.minor.x = element_blank(),plot.title = element_text(hjust=0.5), legend.position="none")+
+  geom_line(data=average_wOBA_by_date, aes(x=Date, y=starters_wOBA), color='black', alpha =0.2)+
+  scale_y_continuous(expand=c(0,0), breaks = seq(0, max(0.8), by = 0.2))
+```
+```{r, echo=FALSE,out.width="100%", fig.align="center"}
+plot(plot)
+```
+
+
+### Correlation with Team wOBA
+
+This table display's each batter's correlation with the Team average wOBA over the course of the Regular Season.
+
+```{r, echo=FALSE, fig.align="center"}
+correlation_table <- correlation_data %>%
+  select(Name, correlation)
+
+correlation_table$correlation <- round(correlation_table$correlation, digits=4)
+
+kbl(correlation_table, col.names=c("Batter Name", "Correlation with Team Average wOBA"), align="c") %>% kable_styling(bootstrap_options=c("striped", "bordered"), full_width=F)%>% column_spec(1,width="7cm")%>%column_spec(2,width="10cm")
+```

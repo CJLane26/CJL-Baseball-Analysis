@@ -1,6 +1,6 @@
 This is my first go at baseball analytics with R and RMarkdown using the https://github.com/BillPetti/baseballr library. 
 
-# Please visit [] to view the html output version of the report.
+# Please visit [https://htmlpreview.github.io/?https://github.com/CJLane26/Phillies-Analysis/blob/main/2023%20Phillies%20wOBA/Phillies_2023_wOBA_Report.html] to view the html output version of the report.
 
 The goal was to parse the 2023 Phillies batter data and create a markdown report of the rolling 10-day wOBA of the starting lineup and team average.
 

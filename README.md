@@ -1,2 +1,2 @@
-# Phillies-Analysis
-A playground for statistical analysis of the Philadelphia Phillies
+# Baseball-Analysis
+A playground for statistical analysis of NCAA & Major League Baseball

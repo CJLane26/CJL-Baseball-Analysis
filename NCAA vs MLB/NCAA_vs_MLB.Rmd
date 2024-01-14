@@ -1,0 +1,292 @@
+---
+title: "NCAA & MLB Stats vs Win%"
+author: "Cameron Lane"
+date: "01/14/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+
+## Introduction
+
+In this report, I will analyze the relationships between baseball teams' collective batting and pitching statistics with their regular season Win Percentage (**Win%**). This analysis will be conducted for both Major League Baseball and NCAA Division 1 Baseball.
+
+---
+
+## Load Necessary Packages and Function Files
+
+```{r Libraries, message = FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(baseballr)
+source("MLB_Teams.R")
+source("MLB_Batting_Data.R")
+source("MLB_Pitching_Data.R")
+source("NCAA_Major_Teams.R")
+source("NCAA_Schedule_to_Record.R")
+source("NCAA_Batting_Data.R")
+source("NCAA_Pitching_Data.R")
+```
+```{r grids, include=FALSE, message=FALSE, warning=FALSE}
+library(grid)
+library(gridExtra)
+```
+NCAA & MLB Baseball data was collected using Bill Petti’s *baseballr* package available on Github at https://github.com/BillPetti/baseballr.
+
+---
+
+## Collect, Parse, and Extrapolate Data
+
+### Call and Parse MLB Team Data
+
+```{r MLB_data, message = FALSE}
+MLB_Teams <- get_MLB_teams()
+MLB_Batting_Data <- get_MLB_batting_data(MLB_Teams)
+MLB_Pitching_Data <- get_MLB_pitching_data(MLB_Teams)
+```
+
+The baseballr package allows us to pull the League Standings as well as Team Batting and Pitching Statistics in a given year through the API provided by https://www.baseball-reference.com/. 
+
+The League Standings API call provides each league's standings including each team's record from which every team's **Win%** is calculated.
+
+The Team Stats API call for batting provides the cumulative team batting statistics for a single team of a regular season. This data included each team's On Base Plus Slugging% (**OPS**), but Weighted On Base Average (**wOBA**) had to be calculated using the *woba_plus* function from the *baseballr* library in the following line of code from *MLB_Batting_Data.R*:
+```{r wOBA, eval=FALSE}
+MLB_Batting_wOBA <- woba_plus(Team_Batting_Stats_Parsed)
+```
+
+The Team Stats API call for pitching provides the cumulative team pitching statistics for a single team of a regular season. This data included each team's Earned Run Average (**ERA**) and Walks and Hits per Inning Pitched (**WHIP**), but Fielding Independent Pitching (**FIP**) and opponent Weighted On Base Average (**wOBA Against**) had to be calculated using the *fip_plus* function from the *baseballr* library in the following line of code from *MLB_Pitching_Data.R*:
+```{r FIP, eval=FALSE}
+MLB_Pitching_FIP <- fip_plus(Team_Pitching_Stats_Parsed)
+```
+
+The functions for the API calls and data parsing for each of the used data frames can be found in the following files:
+- MLB Teams:            MLB_Teams.R
+- MLB Batting Data:     MLB_Batting_Data.R
+- MLB Pitching Data:    MLB_Pitching_Data.R
+
+### Call and Parse NCAA Team Data
+
+```{r NCAA_data, results=FALSE, message=FALSE, warning=FALSE}
+NCAA_Teams <- get_NCAA_teams()
+NCAA_Batting_Data <- get_NCAA_batting_data(NCAA_Teams)
+NCAA_win_loss <- get_NCAA_win_loss(NCAA_Batting_Data)
+NCAA_Pitching_Data <- get_NCAA_pitching_data(NCAA_Teams)
+```
+
+The NCAA Pitching and Batting Data proved more difficult for a few reasons. First, the NCAA has hundreds of baseball programs across Divisions I, II, and III. Second, baseball-reference API does not provide rankings, only team schedules with results. Finally, the API only provides player data, not team-level data for a given season.
+
+To address the multiplicity of teams, I selected only those teams in 8 of the most successful conferences, including all of the Power 5 (Big 12, SEC, ACC, Big 10, and PAC-12).
+
+From this list of teams, I called each team's 2023 schedule and used the game results to tally wins and losses to calculate the team's **Win%**.
+
+Finally, I used the list of teams to iteratively call the API to draw player batting and pitching data. I cut down the batting data to each team's starting lineup (9 players with the most Plate Appearances) and summarized each batting statistic. **wOBA** was calculated using *woba_plus* as with the MLB data. Unlike the MLB data, **OPS** was not included, so I calculated it by team with the equation:
+
+<center> 
+
+$OPS = OBP + SLG$
+
+</center>
+
+The pitching data did not need to be narrowed down to the starting 9, so I simply summarized the data by team and found each team's **FIP** and **wOB Against** using the fip_plus function. However, **ERA** and **WHIP** data were not (and mathematically could not) be included by team, so I calculated them with the following equations:
+
+<center>
+
+$ERA = (9*R)/IP$ 
+
+</center>
+
+<center> 
+
+$WHIP = (BB+H)/IP$ 
+
+</center>
+
+After this was done, I had sufficient sabermetric batting and pitching data for every MLB team and over 90 major NCAA baseball programs for the 2023 regular season. I then merged all this data in two data frames for easier correlation analysis and plotting.
+
+```{r merging, message=FALSE, warning=FALSE}
+MLB_Batting_vs_WPer <- merge(MLB_Teams, MLB_Batting_Data)
+MLB_Averages_vs_WPer <- merge(MLB_Batting_vs_WPer, MLB_Pitching_Data)
+
+NCAA_Batting_vs_WPer <- merge(NCAA_Batting_Data, NCAA_win_loss)
+NCAA_Averages_vs_WPer <- merge(NCAA_Batting_vs_WPer, NCAA_Pitching_Data)
+```
+
+---
+
+## Analyze and Plot Stats vs. Win%
+
+### Find Correlation between Metrics and Win%
+
+```{r correlations_display, message=FALSE, warning=FALSE}
+MLB_OPS_cor <- cor(MLB_Averages_vs_WPer$OPS, MLB_Averages_vs_WPer$win_loss)
+NCAA_OPS_cor <- cor(NCAA_Averages_vs_WPer$avg_OPS, NCAA_Averages_vs_WPer$win_loss)
+```
+
+First, I used the **OPS** and **wOBA** and **Win%** of every team across both the MLB and NCAA to determine the correlation between each statistic and Win% in the NCAA & MLB. An Example of the code for **OPS** vs **Win%** is included above.
+
+```{r correlations_display_2, message=FALSE, warning=FALSE}
+MLB_ERA_cor <- cor(MLB_Averages_vs_WPer$ERA, MLB_Averages_vs_WPer$win_loss)
+NCAA_ERA_cor <- cor(NCAA_Averages_vs_WPer$ERA, NCAA_Averages_vs_WPer$win_loss)
+```
+
+Then I used **ERA**, **FIP**, **WHIP**, and **wOBA Against** to find their correlation with **Win%**.
+
+```{r correlations, include=FALSE, message=FALSE, warning=FALSE}
+MLB_wOBA_cor <- cor(MLB_Averages_vs_WPer$wOBA, MLB_Averages_vs_WPer$win_loss)
+MLB_FIP_cor <- cor(MLB_Averages_vs_WPer$FIP, MLB_Averages_vs_WPer$win_loss)
+MLB_wOBA_against_cor <- cor(MLB_Averages_vs_WPer$wOBA_against, MLB_Averages_vs_WPer$win_loss)
+MLB_WHIP_cor <- cor(MLB_Averages_vs_WPer$WHIP, MLB_Averages_vs_WPer$win_loss)
+NCAA_wOBA_cor <- cor(NCAA_Averages_vs_WPer$avg_wOBA, NCAA_Averages_vs_WPer$win_loss)
+NCAA_FIP_cor <- cor(NCAA_Averages_vs_WPer$FIP, NCAA_Averages_vs_WPer$win_loss)
+NCAA_wOBA_against_cor <- cor(NCAA_Averages_vs_WPer$wOBA_against, NCAA_Averages_vs_WPer$win_loss)
+NCAA_WHIP_cor <- cor(NCAA_Averages_vs_WPer$WHIP, NCAA_Averages_vs_WPer$win_loss)
+correlation_table <- tibble(
+  Level = c("MLB", "NCAA"),
+  OPS = c(MLB_OPS_cor, NCAA_OPS_cor),
+  wOBA = c(MLB_wOBA_cor, NCAA_wOBA_cor),
+  ERA = c(MLB_ERA_cor, NCAA_ERA_cor),
+  WHIP = c(MLB_WHIP_cor, NCAA_WHIP_cor),
+  FIP = c(MLB_FIP_cor, NCAA_FIP_cor),
+  `wOBA Against` = c(MLB_wOBA_against_cor, NCAA_wOBA_against_cor)
+)
+NCAA_Averages_vs_WPer <- NCAA_Averages_vs_WPer %>% rename(Conference = conference)
+NCAA_Averages_vs_WPer <- NCAA_Averages_vs_WPer %>% mutate(Conference = case_when(
+  Conference == "Mountain West" ~ "MW",
+  Conference == "Atlantic 10" ~ "Atl 10",
+  Conference == "Pac-12" ~ "PAC 12",
+  Conference == "Sun Belt" ~ "SBC",
+  TRUE ~ Conference
+))
+```
+```{r plotting, include=FALSE, message=FALSE, warning=FALSE}
+MLB_plot_OPS <- ggplot(MLB_Averages_vs_WPer, aes(x=OPS, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB OPS vs Win % | r =", round(MLB_OPS_cor, 4)), x="Team OPS",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+MLB_plot_wOBA <- ggplot(MLB_Averages_vs_WPer, aes(x=wOBA, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB wOBA vs Win % | r =", round(MLB_wOBA_cor, 4)), x="Team wOBA",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+MLB_plot_ERA <- ggplot(MLB_Averages_vs_WPer, aes(x=ERA, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB ERA vs Win % | r =", round(MLB_ERA_cor, 4)), x="Team ERA",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+MLB_plot_FIP <- ggplot(MLB_Averages_vs_WPer, aes(x=FIP, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB FIP vs Win % | r =", round(MLB_FIP_cor, 4)), x="Team FIP",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+MLB_plot_wOBA_against <- ggplot(MLB_Averages_vs_WPer, aes(x=wOBA_against, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB wOBA Against vs Win % | r =", round(MLB_wOBA_against_cor, 4)), x="Team wOBA Against",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+MLB_plot_WHIP <- ggplot(MLB_Averages_vs_WPer, aes(x=WHIP, y=win_loss, color = League))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("MLB WHIP vs Win % | r =", round(MLB_WHIP_cor, 4)), x="Team WHIP",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_OPS <- ggplot(NCAA_Averages_vs_WPer, aes(x=avg_OPS, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA OPS vs Win % | r =", round(NCAA_OPS_cor, 4)), x="Starting 9 Average OPS",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_wOBA <- ggplot(NCAA_Averages_vs_WPer, aes(x=avg_wOBA, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA wOBA vs Win % | r = ", round(NCAA_wOBA_cor, 4)), x="Starting 9 Average wOBA",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_ERA <- ggplot(NCAA_Averages_vs_WPer, aes(x=ERA, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA ERA vs Win % | r =", round(NCAA_ERA_cor, 4)), x="Team ERA",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_FIP <- ggplot(NCAA_Averages_vs_WPer, aes(x=FIP, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA FIP vs Win % | r =", round(NCAA_FIP_cor, 4)), x="Team FIP",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_wOBA_against <- ggplot(NCAA_Averages_vs_WPer, aes(x=wOBA_against, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA wOBA Against vs Win % | r =", round(NCAA_wOBA_against_cor, 4)), x="Team wOBA Against",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+
+NCAA_plot_WHIP <- ggplot(NCAA_Averages_vs_WPer, aes(x=WHIP, y=win_loss, color = Conference))+
+  geom_point()+
+  geom_smooth(method='lm', formula = y ~ x, color='red')+
+  labs(title = paste("NCAA WHIP vs Win % | r =", round(NCAA_WHIP_cor, 4)), x="Team WHIP",y="Win%")+
+  theme_minimal()+
+  theme(plot.title=element_text(size=16), axis.title.x=element_text(size=14), axis.title.y = element_text(size=14), axis.text = element_text(size=10), legend.text = element_text(size=10), legend.title = element_text(size=11))
+```
+
+### Plot Batting Metrics vs Win%
+
+```{r plot_batting, fig.width=12, fig.height=8, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center'}
+grid.arrange(MLB_plot_OPS, MLB_plot_wOBA, NCAA_plot_OPS, NCAA_plot_wOBA, ncol=2)
+```
+
+When plotting the batting data, we can see a respectable correlation between **OPS**, **wOBA**, and **Win%**. We can also see that **wOBA** has a slightly stronger correlation in both the NCAA & MLB because it is a more advanced metric weighted across league averages.
+
+### Plot Pitching Metrics vs Win%
+Because I have four metrics for pitching data, I broke the plots up into two squares: one for **ERA** and **WHIP**, which are not advanced metrics, and one for **FIP** and **wOBA Against**.
+
+```{r plot_pitching, fig.width=12, fig.height=8, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center'}
+grid.arrange(MLB_plot_ERA, MLB_plot_WHIP, NCAA_plot_ERA, NCAA_plot_WHIP, ncol=2)
+```
+
+First, we plot the non-advanced metrics, **ERA** and **WHIP**. We see an even more significant correlation between these metrics and **Win%** than the batting metrics across both the NCAA & MLB.
+
+Then, we plot the advanced metrics, **FIP** and **wOBA Against**.
+
+```{r plot_pitching_2, fig.width=12, fig.height=8, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center'}
+grid.arrange(MLB_plot_FIP, MLB_plot_wOBA_against, NCAA_plot_FIP, NCAA_plot_wOBA_against, ncol=2)
+```
+
+We continue to see strong correlations between these metrics and **Win%** with a notably weaker correlation for NCAA **FIP**. NCAA fielding can be notoriously poor (sometimes it's a comedy of errors) which is likely why this metric doesn't hold up as well.
+
+---
+
+## Correlation Table
+```{r correlation_table, echo=FALSE, fig.align="center"}
+rounded_cor <- correlation_table %>% mutate_at(vars(-Level), ~round(., digits=4))
+
+kbl(rounded_cor, col.names=names(rounded_cor), align="c") %>% kable_styling(bootstrap_options=c("striped", "bordered"), full_width=F) %>% 
+  column_spec(1,width="4cm") %>% column_spec(c(2:ncol(rounded_cor)),width="5cm")
+```
+
+---
+
+## Conclusions
+
+Every metric correlated significantly with **Win%** in both the NCAA & MLB. as expected. Overall, it appears that pitching performance is slightly more closely related to a team's success in the regular season.

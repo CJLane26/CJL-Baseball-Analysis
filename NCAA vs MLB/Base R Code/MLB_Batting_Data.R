@@ -1,5 +1,6 @@
-
-
+library(baseballr)
+library(dplyr)
+library(tidyr)
 
 get_MLB_batting_data <- function(Teams) {
   
